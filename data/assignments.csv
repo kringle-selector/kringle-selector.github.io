@@ -1,9 +1,9 @@
 giver,receiver
 Rohan,Baby
 Milan,Lara
-Kaarish,Jaya
-Kairav,Kaarish
-Ishaan,Kairav
+Kaarish,Milan
+Kairav,Jaya
+Ishaan,Rohan
 Jaya,Milan
-Lara,Rohan
-Baby,Ishaan
+Lara,Ishaan
+Baby,Kairav
