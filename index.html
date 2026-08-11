@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kringle — Secret Santa</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎅</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <div class="snow" aria-hidden="true"></div>
+
+  <main class="stage">
+
+    <!-- LOGIN SCREEN -->
+    <section class="card" id="login-screen">
+      <div class="logo-wrap" aria-hidden="true">
+        <!-- Inline SVG Santa logo -->
+        <svg class="santa-svg" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <!-- Hat -->
+          <polygon points="60,10 35,52 85,52" fill="#c0392b"/>
+          <rect x="30" y="50" width="60" height="12" rx="6" fill="#fff"/>
+          <circle cx="60" cy="12" r="7" fill="#fff"/>
+          <!-- Face -->
+          <circle cx="60" cy="74" r="26" fill="#f5cba7"/>
+          <!-- Eyes -->
+          <circle cx="52" cy="68" r="3" fill="#2a2a2a"/>
+          <circle cx="68" cy="68" r="3" fill="#2a2a2a"/>
+          <!-- Rosy cheeks -->
+          <circle cx="44" cy="76" r="5" fill="#e8a090" opacity="0.5"/>
+          <circle cx="76" cy="76" r="5" fill="#e8a090" opacity="0.5"/>
+          <!-- Nose -->
+          <circle cx="60" cy="75" r="4" fill="#e07060"/>
+          <!-- Smile -->
+          <path d="M 50 83 Q 60 92 70 83" stroke="#c0392b" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <!-- Beard -->
+          <ellipse cx="60" cy="96" rx="28" ry="18" fill="#fff"/>
+          <ellipse cx="60" cy="86" rx="22" ry="10" fill="#fff"/>
+        </svg>
+      </div>
+
+      <h1 class="brand">Kringle</h1>
+      <p class="tagline">Your festive Secret Santa awaits 🎁</p>
+
+      <form id="login-form" novalidate>
+        <div class="field-wrap">
+          <label for="password" class="sr-only">Password</label>
+          <div class="pw-row">
+            <input
+              id="password"
+              type="password"
+              placeholder="Enter your secret password…"
+              autocomplete="current-password"
+              spellcheck="false"
+              required
+            />
+            <button type="button" id="toggle-pw" aria-label="Show password" title="Show / hide password">👁️</button>
+          </div>
+        </div>
+        <p id="error-msg" hidden role="alert"></p>
+        <p id="loading-msg" hidden aria-live="polite">Loading…</p>
+        <button type="submit" id="submit-btn" class="btn btn-primary">Unlock 🔓</button>
+      </form>
+    </section>
+
+    <!-- MAIN SCREEN -->
+    <section class="card" id="main-screen" hidden>
+      <h2 class="welcome">Welcome, <span id="user-name"></span>! 🎉</h2>
+
+      <!-- Spin view (first time) -->
+      <div id="spin-view" hidden>
+        <p class="spin-prompt">Spin the wheel to find your Secret Santa match!</p>
+        <div class="wheel-wrap">
+          <div class="wheel-pointer" aria-hidden="true">▼</div>
+          <div id="wheel" role="img" aria-label="Prize wheel"></div>
+          <div class="wheel-hub" aria-hidden="true">🎄</div>
+        </div>
+        <button id="spin-btn" class="btn btn-primary">Spin the wheel! 🎡</button>
+      </div>
+
+      <!-- Result view -->
+      <div id="result-view" hidden>
+        <p id="result-lead"></p>
+        <button id="reveal-btn" class="btn btn-ghost" hidden>Click to reveal 🎁</button>
+        <div id="result-card" hidden>
+          <p class="result-label">You're gifting</p>
+          <p id="result-name"></p>
+        </div>
+        <p id="result-note" class="result-note" hidden>Keep it a secret until the big day! 🤫🎅</p>
+      </div>
+
+      <button id="logout-btn" class="btn btn-ghost btn-sm">Sign out</button>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>Kringle &copy; <span id="year"></span> · Made with ❤️ &amp; 🎄</p>
+  </footer>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>
