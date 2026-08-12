@@ -1,5 +1,18 @@
 "use strict";
 
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import {
+  getDatabase, ref, get, set,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+
+
+// ── Firebase ──────────────────────────────────────────────────────────────────
+const firebaseConfig = {
+  databaseURL: "https://kringle-selector-default-rtdb.firebaseio.com",
+};
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const loginScreen  = document.getElementById("login-screen");
 const mainScreen   = document.getElementById("main-screen");
@@ -23,129 +36,49 @@ const logoutBtn    = document.getElementById("logout-btn");
 const yearEl       = document.getElementById("year");
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const SEG_COLORS   = ["#c0392b", "#1e6b52", "#e74c3c", "#146c43"];
-const STORAGE_KEY  = "kringle_reveals_v1";
+const SEG_COLORS = ["#c0392b", "#1e6b52", "#e74c3c", "#146c43"];
+// RTDB keys can't contain these characters; a password with any of them can't be
+// a valid key, so we treat it as "no such password" rather than crashing ref().
+const BAD_KEY_CHARS = /[.$#[\]/]/;
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let participants    = new Map(); // password (lower) → name
-let assignments     = new Map(); // giver → receiver
-let wheelNames      = [];        // ordered givers from assignments.csv
-let seedRevealed    = new Map(); // name → receiver (CSV seed)
-let currentUser     = null;
-let currentWheelNames = [];
-let spinning        = false;
+let wheelNames        = [];   // all participant names (for the wheel segments)
+let currentUser       = null; // logged-in person's name
+let currentPw         = null; // their password (the RTDB key)
+let currentReceiver   = null; // who they're gifting
+let currentWheelNames = [];   // wheelNames minus the current user
+let spinning          = false;
 
 // ── Year ──────────────────────────────────────────────────────────────────────
 yearEl.textContent = new Date().getFullYear();
 
-// ── localStorage helpers ──────────────────────────────────────────────────────
-const readStore = () => {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
-};
-
-function getRevealed(name) {
-  const s = readStore();
-  if (s[name] && s[name].receiver) return s[name].receiver;
-  if (seedRevealed.has(name)) return seedRevealed.get(name);
-  return null;
-}
-
-function markRevealed(name, receiver) {
-  const s = readStore();
-  s[name] = { receiver, at: new Date().toISOString() };
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch (e) { console.warn(e); }
-}
-
-// ── CSV parser ────────────────────────────────────────────────────────────────
-function parseCSV(text) {
-  const rows = [];
-  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  for (const line of lines) {
-    if (line.trim() === "") continue;
-    const row = [];
-    let i = 0;
-    while (i < line.length) {
-      if (line[i] === '"') {
-        // quoted field
-        i++; // skip opening quote
-        let field = "";
-        while (i < line.length) {
-          if (line[i] === '"' && line[i + 1] === '"') {
-            field += '"'; i += 2;
-          } else if (line[i] === '"') {
-            i++; break;
-          } else {
-            field += line[i++];
-          }
-        }
-        row.push(field);
-        if (line[i] === ",") i++;
-      } else {
-        const end = line.indexOf(",", i);
-        if (end === -1) { row.push(line.slice(i)); break; }
-        row.push(line.slice(i, end));
-        i = end + 1;
-      }
-    }
-    rows.push(row);
-  }
-  return rows;
-}
-
-async function fetchRows(url) {
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-  const rows = parseCSV(await res.text());
-  const header = rows.shift().map((h) => h.trim().toLowerCase());
-  return { header, rows };
+// ── Time helper ───────────────────────────────────────────────────────────────
+// Reveal timestamps are stored as a readable Eastern-time string (DST-aware:
+// shows EDT in summer, EST in winter). Kept a string to satisfy the RTDB rules.
+function nowEastern() {
+  return new Date().toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: true, timeZoneName: "short",
+  });
 }
 
 // ── Data loading ──────────────────────────────────────────────────────────────
-async function loadData() {
-  const [pResult, aResult, rResult] = await Promise.all([
-    fetchRows("data/participants.csv"),
-    fetchRows("data/assignments.csv"),
-    fetchRows("data/reveal_status.csv").catch(() => null),
-  ]);
-
-  // participants: password (lower) → name
-  const pi = pResult.header.indexOf("name");
-  const pw = pResult.header.indexOf("password");
-  for (const row of pResult.rows) {
-    if (row[pi] && row[pw]) {
-      participants.set(row[pw].trim().toLowerCase(), row[pi].trim());
-    }
-  }
-
-  // assignments: giver → receiver; wheelNames = ordered givers
-  const gi = aResult.header.indexOf("giver");
-  const ri = aResult.header.indexOf("receiver");
-  for (const row of aResult.rows) {
-    if (row[gi] && row[ri]) {
-      assignments.set(row[gi].trim(), row[ri].trim());
-      wheelNames.push(row[gi].trim());
-    }
-  }
-
-  // reveal_status seed
-  if (rResult) {
-    const ni  = rResult.header.indexOf("name");
-    const hri = rResult.header.indexOf("has_revealed");
-    const rri = rResult.header.indexOf("revealed_receiver");
-    for (const row of rResult.rows) {
-      const name = row[ni] && row[ni].trim();
-      const flag = row[hri] && row[hri].trim().toLowerCase();
-      if (name && ["yes","true","1"].includes(flag)) {
-        const recv = rri >= 0 ? (row[rri] || "").trim() : "";
-        if (recv) seedRevealed.set(name, recv);
-      }
-    }
-  }
+// Only /names is fetched up front (it's public). Assignments live under
+// /secrets/{password} and are read one-at-a-time at login, so no browser ever
+// downloads more than the logged-in user's own match.
+async function loadNames() {
+  const snap = await get(ref(db, "names"));
+  const val = snap.val();
+  // Firebase returns an array for sequential integer keys, or an object if sparse.
+  wheelNames = (Array.isArray(val) ? val : Object.values(val || {})).filter(Boolean);
+  if (wheelNames.length === 0) throw new Error("No names in database");
 }
 
-const ready = loadData().catch((err) => {
+const ready = loadNames().catch((err) => {
   console.error(err);
-  showError("Couldn't reach the database… run it through a local server or GitHub Pages.");
+  showError("Couldn't reach the database. Check your connection and refresh. 🎄");
   submitBtn.disabled = true;
 });
 
@@ -173,19 +106,34 @@ loginForm.addEventListener("submit", async (e) => {
     return;
   }
 
+  const pw = passwordEl.value.trim().toLowerCase();
+
+  let secret = null;
+  if (pw && !BAD_KEY_CHARS.test(pw)) {
+    try {
+      secret = (await get(ref(db, `secrets/${pw}`))).val();
+    } catch (err) {
+      console.error(err);
+      loadingMsg.hidden = true;
+      submitBtn.disabled = false;
+      showError("Couldn't reach the database. Try again in a moment. 🎄");
+      return;
+    }
+  }
+
   loadingMsg.hidden = true;
   submitBtn.disabled = false;
 
-  const pw = passwordEl.value.trim().toLowerCase();
-  const name = participants.get(pw);
-
-  if (!name) {
+  if (!secret || !secret.name || !secret.receiver) {
     showError("That password isn't on the nice list. Try again! 🎅");
     passwordEl.select();
     return;
   }
 
-  enterMain(name);
+  currentPw       = pw;
+  currentUser     = secret.name;
+  currentReceiver = secret.receiver;
+  await enterMain();
 });
 
 function showError(msg) {
@@ -198,24 +146,26 @@ function clearError() {
 }
 
 // ── Main screen ───────────────────────────────────────────────────────────────
-function enterMain(name) {
-  currentUser = name;
-  userNameEl.textContent = name;
+async function enterMain() {
+  userNameEl.textContent = currentUser;
 
   loginScreen.hidden = true;
   mainScreen.hidden = false;
-
   spinView.hidden = true;
   resultView.hidden = true;
 
-  const revealed = getRevealed(name);
+  // Already spun on any device? Skip the wheel.
+  let revealed = null;
+  try {
+    revealed = (await get(ref(db, `reveals/${currentPw}`))).val();
+  } catch (err) {
+    console.warn("Could not read reveal status:", err);
+  }
 
-  if (revealed) {
-    // returning user — skip wheel
-    showResult(revealed, false);
+  if (revealed && revealed.receiver) {
+    showResult(revealed.receiver, false);
   } else {
-    // first time — build wheel and show spin view
-    currentWheelNames = wheelNames.filter((n) => n !== name);
+    currentWheelNames = wheelNames.filter((n) => n !== currentUser);
     buildWheel(currentWheelNames);
     spinView.hidden = false;
   }
@@ -224,6 +174,8 @@ function enterMain(name) {
 // ── Logout ────────────────────────────────────────────────────────────────────
 logoutBtn.addEventListener("click", () => {
   currentUser = null;
+  currentPw = null;
+  currentReceiver = null;
   spinning = false;
   spinBtn.disabled = false;
   passwordEl.value = "";
@@ -261,7 +213,7 @@ spinBtn.addEventListener("click", spin);
 
 function spin() {
   if (spinning || !currentUser) return;
-  const receiver = assignments.get(currentUser);
+  const receiver = currentReceiver;
   const idx = currentWheelNames.indexOf(receiver);
   if (idx < 0) return;
   spinning = true;
@@ -278,8 +230,17 @@ function spin() {
     wheelEl.style.transform = `rotate(${finalRotation}deg)`;
   });
 
-  wheelEl.addEventListener("transitionend", () => {
-    markRevealed(currentUser, receiver);
+  wheelEl.addEventListener("transitionend", async () => {
+    try {
+      await set(ref(db, `reveals/${currentPw}`), {
+        name: currentUser,
+        receiver,
+        at: nowEastern(),
+      });
+    } catch (err) {
+      // Non-fatal: the reveal just won't persist across devices this time.
+      console.warn("Could not save reveal to database:", err);
+    }
     spinning = false;
     showResult(receiver, true);
   }, { once: true });
